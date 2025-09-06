@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+:root {
+  height: 100%;
+}
+body {
+  @apply bg-base-100 text-accent-white selection:bg-accent-gold;
+  background-image: theme('backgroundImage.radial-glow'),
+    theme('backgroundImage.grid');
+  background-size: cover, theme('backgroundSize.grid');
+  background-attachment: fixed;
+  scroll-behavior: smooth;
+}
+.section {
+  @apply py-24 md:py-32;
+}
+.container {
+  @apply mx-auto max-w-6xl px-4 md:px-8;
+}
+.glass {
+  @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl shadow-soft;
+}
+.underline-gradient {
+  background: linear-gradient(90deg, #1e3a8a, #ffd700, #ffffff);
+  height: 2px;
+  width: 100%;
+  display: block;
+  border-radius: 9999px;
+}

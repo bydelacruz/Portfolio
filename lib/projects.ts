@@ -1,0 +1,7 @@
+export type Project = { title: string; slug: string; description: string; image?: string | null; gallery?: string[]; repo?: string | null; demo?: string | null; tags?: string[] };
+export const projects: Project[] = [
+  { title: "Jarvis", slug: "jarvis", description: "A playful, conversational web assistant that guides users through tasks with personality and motion.", image: "/projects/jarvis/thumb.png", gallery: ["/projects/jarvis/thumb.png"], repo: null, demo: "https://jarvis-gxgq.onrender.com", tags: ["JS","UI","Interactions"] },
+  { title: "Ceelo", slug: "cee-lo", description: "A browser-based, fast-paced Cee‑Lo dice game featuring clean UI and keyboard controls.", image: "/projects/cee-lo/thumb.png", gallery: ["/projects/cee-lo/thumb.png"], repo: null, demo: "https://cee-lo.onrender.com", tags: ["Game","Canvas","Vanilla JS"] },
+  { title: "Get Going", slug: "get-going", description: "A minimalist productivity app that helps you focus on the next task with an intentionally simple flow.", image: "/projects/get-going/thumb.png", gallery: ["/projects/get-going/thumb.png"], repo: null, demo: "https://get-going.onrender.com", tags: ["Productivity","Web App"] },
+  { title: "TDEE", slug: "tdee", description: "A Total Daily Energy Expenditure calculator with a straightforward UX for quick health insights.", image: "/projects/tdee/thumb.png", gallery: ["/projects/tdee/thumb.png"], repo: null, demo: "https://tdee-ws2w.onrender.com", tags: ["Health","Calculator"] },
+];
