@@ -1,0 +1,76 @@
+name: Deploy Node App to Namecheap
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: ${{ secrets.NODE_ENV }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      # Fail fast locally (good feedback if build breaks)
+      - name: Install deps (local)
+        run: npm ci
+
+      - name: Build (local)
+        run: npm run build
+
+      # Upload source to server (exclude heavy/irrelevant things)
+      - name: Upload to server (SFTP)
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          server: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+          local_path: "./"
+          remote_path: ${{ secrets.REMOTE_DIR }}
+          exclude: |
+            .git*
+            .github*
+            node_modules
+            .next/cache
+            **/*.log
+            coverage
+            tmp
+            dist/*.map
+
+      # Install & build on server, then restart Passenger
+      - name: Install/Build/Restart (SSH)
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script_stop: true
+          script: |
+            set -e
+            cd ${{ secrets.REMOTE_DIR }}
+
+            # Ensure Passenger restart dir exists
+            mkdir -p tmp
+
+            # Install only prod dependencies for runtime
+            npm ci --omit=dev
+
+            # Build on server to ensure native binaries match server OS
+            npm run build
+
+            # Signal Passenger to reload
+            touch tmp/restart.txt
+
+            echo "Deployment complete ✅"
