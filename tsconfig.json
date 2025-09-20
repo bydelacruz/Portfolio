@@ -19,9 +19,11 @@
     "baseUrl": ".",
     "paths": {
       "@/*": [
-        "./*"
+        "./*",
+        "./app/*",
+        "./src/*"
       ]
-    },
+    },    
     "incremental": true,
     "plugins": [
       {
