@@ -68,10 +68,51 @@ jobs:
       - name: Install runtime deps & restart app
         run: |
           ssh -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}" <<'EOSSH'
-          set -e
-          cd "${{ secrets.REMOTE_DIR }}"
+          set -euo pipefail
+
+          APP_DIR="${{ secrets.REMOTE_DIR }}"
+          cd "$APP_DIR"
           mkdir -p tmp
-          npm ci --omit=dev
+
+          # Try common places for npm on cPanel/Namecheap
+          find_npm() {
+            if command -v npm >/dev/null 2>&1; then
+              command -v npm
+              return
+            fi
+
+            # Typical cPanel nodevenv layouts
+            if ls -d ~/nodevenv/*/*/bin >/dev/null 2>&1; then
+              ls -d ~/nodevenv/*/*/bin | head -n1 | sed 's/$/\/npm/'
+              return
+            fi
+            if ls -d ~/nodevenv/*/bin >/dev/null 2>&1; then
+              ls -d ~/nodevenv/*/bin | head -n1 | sed 's/$/\/npm/'
+              return
+            fi
+
+            # Fallbacks for alt-nodejs installs (adjust if your server uses 18/20/etc.)
+            for v in 22 20 18 16; do
+              if [ -x "/opt/alt/alt-nodejs${v}/root/usr/bin/npm" ]; then
+                echo "/opt/alt/alt-nodejs${v}/root/usr/bin/npm"
+                return
+              fi
+            done
+
+            return 1
+          }
+
+          NPM_BIN="$(find_npm)" || {
+            echo "ERROR: Could not find npm on PATH or in ~/nodevenv. \
+            If you open cPanel → Setup Node.js App, note the 'Application root' (should match REMOTE_DIR) \
+            and the Node version. Then SSH and run 'ls -la ~/nodevenv' to see the exact path."
+            exit 127
+          }
+
+          echo "Using npm at: $NPM_BIN"
+          "$NPM_BIN" ci --omit=dev
+
+          # Restart Passenger
           touch tmp/restart.txt
           echo "Deployment complete ✅"
           EOSSH
