@@ -39,32 +39,27 @@ jobs:
           cp package.json deploy/package.json
           [ -f package-lock.json ] && cp package-lock.json deploy/package-lock.json || true
 
-      # Write SSH key INSIDE THE WORKSPACE so containerized actions can see it
-      - name: Write SSH key (from base64) to workspace
-        run: |
-          set -e
-          echo "${{ secrets.SSH_PRIVATE_KEY_B64 }}" | base64 -d > "${{ github.workspace }}/gh_actions"
-          chmod 600 "${{ github.workspace }}/gh_actions"
-
+      # Upload deploy/ via SCP using INLINE KEY (no key_path)
       - name: Upload deploy bundle via SCP
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
-          port: ${{ secrets.SSH_PORT }} # 21098 for Namecheap shared hosting
-          key_path: ${{ github.workspace }}/gh_actions
+          port: ${{ secrets.SSH_PORT }} # 21098 on Namecheap shared
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "deploy/*"
           target: "${{ secrets.REMOTE_DIR }}"
           overwrite: true
           strip_components: 1
 
+      # Install prod deps on server & restart Passenger (INLINE KEY)
       - name: Install runtime deps & restart app (SSH)
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           port: ${{ secrets.SSH_PORT }}
-          key_path: ${{ github.workspace }}/gh_actions
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script_stop: true
           script: |
             set -e
