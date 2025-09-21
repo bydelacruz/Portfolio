@@ -10,21 +10,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1) Checkout
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 2) Node setup
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
 
+      # 3) Install dev deps for build (Tailwind/PostCSS etc.)
       - name: Install dependencies (includes dev)
         run: npm ci --include=dev
 
+      # 4) Build
       - name: Build (Next.js)
         run: npm run build
 
+      # 5) Prepare minimal deploy bundle
       - name: Prepare deploy bundle
         run: |
           set -e
@@ -39,32 +44,34 @@ jobs:
           cp package.json deploy/package.json
           [ -f package-lock.json ] && cp package-lock.json deploy/package-lock.json || true
 
-      # Upload deploy/ via SCP using INLINE KEY (no key_path)
-      - name: Upload deploy bundle via SCP
-        uses: appleboy/scp-action@v0.1.7
+      # 6) Start ssh-agent and load your private key (MULTI-LINE raw key secret)
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          port: ${{ secrets.SSH_PORT }} # 21098 on Namecheap shared
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "deploy/*"
-          target: "${{ secrets.REMOTE_DIR }}"
-          overwrite: true
-          strip_components: 1
+          ssh-private-key: |
+            ${{ secrets.SSH_PRIVATE_KEY }}
 
-      # Install prod deps on server & restart Passenger (INLINE KEY)
-      - name: Install runtime deps & restart app (SSH)
-        uses: appleboy/ssh-action@v1.1.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          port: ${{ secrets.SSH_PORT }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script_stop: true
-          script: |
-            set -e
-            cd ${{ secrets.REMOTE_DIR }}
-            mkdir -p tmp
-            npm ci --omit=dev
-            touch tmp/restart.txt
-            echo "Deployment complete ✅"
+      # 7) Trust host key (avoids interactive prompt)
+      - name: Add server to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      # 8) Upload deploy/ with rsync over SSH (fast & reliable)
+      - name: Rsync deploy bundle
+        run: |
+          rsync -az --delete \
+            -e "ssh -p ${{ secrets.SSH_PORT }}" \
+            deploy/ "${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:${{ secrets.REMOTE_DIR }}/"
+
+      # 9) Install prod deps on server & restart Passenger
+      - name: Install runtime deps & restart app
+        run: |
+          ssh -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}" <<'EOSSH'
+          set -e
+          cd "${{ secrets.REMOTE_DIR }}"
+          mkdir -p tmp
+          npm ci --omit=dev
+          touch tmp/restart.txt
+          echo "Deployment complete ✅"
+          EOSSH
