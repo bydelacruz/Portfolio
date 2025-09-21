@@ -10,6 +10,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Write SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY_B64 }}" | base64 -d > ~/.ssh/gh_actions
+          chmod 600 ~/.ssh/gh_actions
+
       - name: Checkout
         uses: actions/checkout@v4
 
