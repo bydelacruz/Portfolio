@@ -26,6 +26,7 @@ const tooling = [
   'Vite',
   'Postman',
   'VS Code',
+  'CI/CD'
 ];
 
 function Badge({ label }: { label: string }) {
