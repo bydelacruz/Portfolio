@@ -10,81 +10,66 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Checkout
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2) Node setup
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
 
-      # 3) Install dev deps (Tailwind/PostCSS, etc.) for build
       - name: Install dependencies (includes dev)
         run: npm ci --include=dev
 
-      # 4) Build
       - name: Build (Next.js)
         run: npm run build
 
-      # 5) Prepare minimal deploy bundle (adjust as needed)
       - name: Prepare deploy bundle
         run: |
           set -e
           rm -rf deploy
           mkdir -p deploy
-          # Next.js runtime assets (SSR)
           cp -r .next deploy/.next
           [ -d public ] && cp -r public deploy/public || true
-          # App entry/configs (include whichever you use)
           [ -f server.js ] && cp server.js deploy/server.js || true
           [ -f server.mjs ] && cp server.mjs deploy/server.mjs || true
           [ -f next.config.js ] && cp next.config.js deploy/ || true
           [ -f next.config.mjs ] && cp next.config.mjs deploy/ || true
-          # Package manifests for runtime install
           cp package.json deploy/package.json
           [ -f package-lock.json ] && cp package-lock.json deploy/package-lock.json || true
-          # --- Optional: include other runtime files/folders ---
-          # [ -d prisma ] && cp -r prisma deploy/prisma || true
-          # [ -d uploads ] && cp -r uploads deploy/uploads || true
 
-      # 6) Write SSH key secret -> file, set perms (Option A)
-      - name: Write SSH key (raw)
+      # Write SSH key INSIDE THE WORKSPACE so containerized actions can see it
+      - name: Write SSH key (from base64) to workspace
         run: |
-          mkdir -p ~/.ssh
-          printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/gh_actions
-          chmod 600 ~/.ssh/gh_actions
+          set -e
+          echo "${{ secrets.SSH_PRIVATE_KEY_B64 }}" | base64 -d > "${{ github.workspace }}/gh_actions"
+          chmod 600 "${{ github.workspace }}/gh_actions"
 
-      # 7) Upload via SCP (only deploy/ contents)
       - name: Upload deploy bundle via SCP
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           port: ${{ secrets.SSH_PORT }} # 21098 for Namecheap shared hosting
-          key_path: ~/.ssh/gh_actions
+          key_path: ${{ github.workspace }}/gh_actions
           source: "deploy/*"
           target: "${{ secrets.REMOTE_DIR }}"
           overwrite: true
           strip_components: 1
 
-      # 8) Install prod deps on server & restart Passenger
       - name: Install runtime deps & restart app (SSH)
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           port: ${{ secrets.SSH_PORT }}
-          key_path: ~/.ssh/gh_actions
+          key_path: ${{ github.workspace }}/gh_actions
           script_stop: true
           script: |
             set -e
             cd ${{ secrets.REMOTE_DIR }}
             mkdir -p tmp
             npm ci --omit=dev
-            # If you use "next start" via server.js/server.mjs, that's fine.
-            # Passenger restart signal:
             touch tmp/restart.txt
             echo "Deployment complete ✅"
