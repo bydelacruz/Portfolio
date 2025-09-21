@@ -1,4 +1,4 @@
-name: Deploy Node App to Namecheap
+name: Deploy Node App to Namecheap.com
 
 on:
   push:
