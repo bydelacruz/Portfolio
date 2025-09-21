@@ -18,11 +18,10 @@
     "jsx": "preserve",
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./*",
-        "./app/*",
-        "./src/*"
-      ]
+      "@/*": ["./*"],
+      "@root/*": ["./*"],
+      "@src/*": ["src/*"],
+      "@components/*": ["./components/*"]
     },    
     "incremental": true,
     "plugins": [

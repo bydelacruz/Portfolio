@@ -25,6 +25,17 @@ jobs:
       - name: Install deps (local)
         run: npm ci
 
+      - name: debug paths
+        run: |
+          echo "tsconfig:"
+          cat tsconfig.json || true
+          echo "Tree:"
+          ls -la
+          echo "find components dirs:"
+          find . -maxdepth 3 -type d -iname "components" -print
+          echo "Lost candidate files:"
+          fit ls-files | grep -E '^(app|src)/components/|^components/' || true
+
       - name: Build (local)
         run: npm run build
 
