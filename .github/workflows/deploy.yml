@@ -1,4 +1,4 @@
-name: Deploy Node App to Namecheap.com
+name: Deploy Node App to Namecheap
 
 on:
   push:
@@ -10,76 +10,81 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Write SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY_B64 }}" | base64 -d > ~/.ssh/gh_actions
-          chmod 600 ~/.ssh/gh_actions
-
+      # 1) Checkout
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Use Node
+      # 2) Node setup
+      - name: Use Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
 
-      # Install dev deps for build (Tailwind/PostCSS, etc.)
-      - name: Install deps (includes dev)
+      # 3) Install dev deps (Tailwind/PostCSS, etc.) for build
+      - name: Install dependencies (includes dev)
         run: npm ci --include=dev
 
+      # 4) Build
       - name: Build (Next.js)
         run: npm run build
 
-      # Prepare minimal deploy artifact
+      # 5) Prepare minimal deploy bundle (adjust as needed)
       - name: Prepare deploy bundle
         run: |
           set -e
           rm -rf deploy
           mkdir -p deploy
-          # Core runtime assets for Next.js SSR
+          # Next.js runtime assets (SSR)
           cp -r .next deploy/.next
           [ -d public ] && cp -r public deploy/public || true
-          # App entry / config files (adjust as needed)
+          # App entry/configs (include whichever you use)
           [ -f server.js ] && cp server.js deploy/server.js || true
           [ -f server.mjs ] && cp server.mjs deploy/server.mjs || true
           [ -f next.config.js ] && cp next.config.js deploy/ || true
           [ -f next.config.mjs ] && cp next.config.mjs deploy/ || true
           # Package manifests for runtime install
           cp package.json deploy/package.json
-          if [ -f package-lock.json ]; then cp package-lock.json deploy/package-lock.json; fi
+          [ -f package-lock.json ] && cp package-lock.json deploy/package-lock.json || true
+          # --- Optional: include other runtime files/folders ---
+          # [ -d prisma ] && cp -r prisma deploy/prisma || true
+          # [ -d uploads ] && cp -r uploads deploy/uploads || true
 
-      # Upload deploy/ to your app directory
-      - name: Upload via SCP
+      # 6) Write SSH key secret -> file, set perms (Option A)
+      - name: Write SSH key (raw)
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/gh_actions
+          chmod 600 ~/.ssh/gh_actions
+
+      # 7) Upload via SCP (only deploy/ contents)
+      - name: Upload deploy bundle via SCP
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
+          port: ${{ secrets.SSH_PORT }} # 21098 for Namecheap shared hosting
+          key_path: ~/.ssh/gh_actions
           source: "deploy/*"
           target: "${{ secrets.REMOTE_DIR }}"
           overwrite: true
           strip_components: 1
 
-      # Install runtime deps & restart Passenger
-      - name: Install runtime deps & restart
+      # 8) Install prod deps on server & restart Passenger
+      - name: Install runtime deps & restart app (SSH)
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
+          key_path: ~/.ssh/gh_actions
           script_stop: true
           script: |
             set -e
             cd ${{ secrets.REMOTE_DIR }}
             mkdir -p tmp
-            # Install ONLY production deps
             npm ci --omit=dev
-            # If you run with "next start":
-            # npx next telemetry disable >/dev/null 2>&1 || true
-            # Signal Passenger to reload
+            # If you use "next start" via server.js/server.mjs, that's fine.
+            # Passenger restart signal:
             touch tmp/restart.txt
             echo "Deployment complete ✅"
