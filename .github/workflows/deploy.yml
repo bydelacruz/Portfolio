@@ -1,4 +1,4 @@
-name: Deploy Node App to Namecheap.com
+name: Deploy Node App to Namecheap
 
 on:
   push:
@@ -8,8 +8,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      NODE_ENV: ${{ secrets.NODE_ENV }}
 
     steps:
       - name: Checkout
@@ -21,25 +19,13 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      # Fail fast locally (good feedback if build breaks)
-      - name: Install deps (local)
-        run: npm ci
+      # IMPORTANT: install dev deps for build
+      - name: Install deps (includes dev)
+        run: npm ci --include=dev
 
-      - name: debug paths
-        run: |
-          echo "tsconfig:"
-          cat tsconfig.json || true
-          echo "Tree:"
-          ls -la
-          echo "find components dirs:"
-          find . -maxdepth 3 -type d -iname "components" -print
-          echo "Lost candidate files:"
-          fit ls-files | grep -E '^(app|src)/components/|^components/' || true
-
-      - name: Build (local)
+      - name: Build (Next.js)
         run: npm run build
 
-      # Upload source to server (exclude heavy/irrelevant things)
       - name: Upload to server (SFTP)
         uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
@@ -59,8 +45,7 @@ jobs:
             tmp
             dist/*.map
 
-      # Install & build on server, then restart Passenger
-      - name: Install/Build/Restart (SSH)
+      - name: Install/Build/Restart on server
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -71,17 +56,14 @@ jobs:
           script: |
             set -e
             cd ${{ secrets.REMOTE_DIR }}
-
-            # Ensure Passenger restart dir exists
             mkdir -p tmp
 
-            # Install only prod dependencies for runtime
-            npm ci --omit=dev
-
-            # Build on server to ensure native binaries match server OS
+            # Build requires dev deps too
+            npm ci --include=dev
             npm run build
 
-            # Signal Passenger to reload
-            touch tmp/restart.txt
+            # Optional: slim down after build
+            npm prune --omit=dev
 
+            touch tmp/restart.txt
             echo "Deployment complete ✅"
