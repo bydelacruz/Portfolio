@@ -1,4 +1,4 @@
-name: Deploy Node App to Namecheap
+name: Deploy Node App to Namecheap.com
 
 on:
   push:
@@ -19,33 +19,46 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      # IMPORTANT: install dev deps for build
+      # Install dev deps for build (Tailwind/PostCSS, etc.)
       - name: Install deps (includes dev)
         run: npm ci --include=dev
 
       - name: Build (Next.js)
         run: npm run build
 
-      - name: Upload to server (SFTP)
-        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
-        with:
-          server: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USERNAME }}
-          ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
-          local_path: "./"
-          remote_path: ${{ secrets.REMOTE_DIR }}
-          exclude: |
-            .git*
-            .github*
-            node_modules
-            .next/cache
-            **/*.log
-            coverage
-            tmp
-            dist/*.map
+      # Prepare minimal deploy artifact
+      - name: Prepare deploy bundle
+        run: |
+          set -e
+          rm -rf deploy
+          mkdir -p deploy
+          # Core runtime assets for Next.js SSR
+          cp -r .next deploy/.next
+          [ -d public ] && cp -r public deploy/public || true
+          # App entry / config files (adjust as needed)
+          [ -f server.js ] && cp server.js deploy/server.js || true
+          [ -f server.mjs ] && cp server.mjs deploy/server.mjs || true
+          [ -f next.config.js ] && cp next.config.js deploy/ || true
+          [ -f next.config.mjs ] && cp next.config.mjs deploy/ || true
+          # Package manifests for runtime install
+          cp package.json deploy/package.json
+          if [ -f package-lock.json ]; then cp package-lock.json deploy/package-lock.json; fi
 
-      - name: Install/Build/Restart on server
+      # Upload deploy/ to your app directory
+      - name: Upload via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "deploy/*"
+          target: "${{ secrets.REMOTE_DIR }}"
+          overwrite: true
+          strip_components: 1
+
+      # Install runtime deps & restart Passenger
+      - name: Install runtime deps & restart
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -57,13 +70,10 @@ jobs:
             set -e
             cd ${{ secrets.REMOTE_DIR }}
             mkdir -p tmp
-
-            # Build requires dev deps too
-            npm ci --include=dev
-            npm run build
-
-            # Optional: slim down after build
-            npm prune --omit=dev
-
+            # Install ONLY production deps
+            npm ci --omit=dev
+            # If you run with "next start":
+            # npx next telemetry disable >/dev/null 2>&1 || true
+            # Signal Passenger to reload
             touch tmp/restart.txt
             echo "Deployment complete ✅"
